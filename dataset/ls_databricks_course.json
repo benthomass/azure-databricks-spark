@@ -1,0 +1,44 @@
+{
+	"name": "ls_databricks_course",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "ls_formula1dl_storage",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"p_window_end_date": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"type": "Json",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobFSLocation",
+				"fileName": {
+					"value": "@formatDateTime(dataset().p_window_end_date, 'yyyy-MM')",
+					"type": "Expression"
+				},
+				"folderPath": "raw",
+				"fileSystem": "formula1incremental"
+			}
+		},
+		"schema": {
+			"type": "object",
+			"properties": {
+				"constructorId": {
+					"type": "string"
+				},
+				"name": {
+					"type": "string"
+				},
+				"nationality": {
+					"type": "string"
+				},
+				"url": {
+					"type": "string"
+				}
+			}
+		}
+	}
+}
