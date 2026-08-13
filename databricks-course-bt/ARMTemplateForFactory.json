@@ -1,0 +1,516 @@
+{
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"type": "string",
+			"metadata": "Data Factory name",
+			"defaultValue": "databricks-course-bt"
+		},
+		"ls_databricks_course_ws_accessToken": {
+			"type": "secureString",
+			"metadata": "Secure string for 'accessToken' of 'ls_databricks_course_ws'"
+		},
+		"ls_formula1dl_storage_accountKey": {
+			"type": "secureString",
+			"metadata": "Secure string for 'accountKey' of 'ls_formula1dl_storage'"
+		},
+		"ls_databricks_course_ws_properties_typeProperties_existingClusterId": {
+			"type": "string",
+			"defaultValue": "0804-090110-tois29ir"
+		},
+		"ls_formula1dl_storage_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://dbcourse2026storage.dfs.core.windows.net/"
+		},
+		"tr_process_f1_data_properties_pl_process_parameters_p_window_end_date": {
+			"type": "string",
+			"defaultValue": "2025-02"
+		}
+	},
+	"variables": {
+		"factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]"
+	},
+	"resources": [
+		{
+			"name": "[concat(parameters('factoryName'), '/ls_databricks_course_ws')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureDatabricks",
+				"typeProperties": {
+					"domain": "https://adb-5441706167609661.1.azuredatabricks.net",
+					"accessToken": {
+						"type": "SecureString",
+						"value": "[parameters('ls_databricks_course_ws_accessToken')]"
+					},
+					"existingClusterId": "[parameters('ls_databricks_course_ws_properties_typeProperties_existingClusterId')]"
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ls_formula1dl_storage')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('ls_formula1dl_storage_properties_typeProperties_url')]",
+					"accountKey": {
+						"type": "SecureString",
+						"value": "[parameters('ls_formula1dl_storage_accountKey')]"
+					}
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/pl_ingest')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "Get Folder Details",
+						"type": "GetMetadata",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"dataset": {
+								"referenceName": "ls_databricks_course",
+								"type": "DatasetReference",
+								"parameters": {
+									"p_window_end_date": {
+										"value": "@pipeline().parameters.p_window_end_date",
+										"type": "Expression"
+									}
+								}
+							},
+							"fieldList": [
+								"exists"
+							],
+							"storeSettings": {
+								"type": "AzureBlobFSReadSettings",
+								"enablePartitionDiscovery": false
+							},
+							"formatSettings": {
+								"type": "JsonReadSettings"
+							}
+						}
+					},
+					{
+						"name": "If Condition1",
+						"type": "IfCondition",
+						"dependsOn": [
+							{
+								"activity": "Get Folder Details",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@activity('Get Folder Details').output.exists",
+								"type": "Expression"
+							},
+							"ifTrueActivities": [
+								{
+									"name": "ingest_all_files",
+									"type": "DatabricksNotebook",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"notebookPath": "/Users/ben.thomas@maticapartners.com/azure-databricks-spark/formula1-project/02-ingestion/0.ingest_all_files",
+										"baseParameters": {
+											"p_data_source": {
+												"value": "@variables('v_data_source')",
+												"type": "Expression"
+											},
+											"p_file_date": {
+												"value": "@formatDateTime(pipeline().parameters.p_window_end_date, 'yyyy-MM')",
+												"type": "Expression"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_databricks_course_ws",
+										"type": "LinkedServiceReference"
+									}
+								}
+							]
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"p_window_end_date": {
+						"type": "string"
+					}
+				},
+				"variables": {
+					"v_data_source": {
+						"type": "String"
+					}
+				},
+				"annotations": []
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/ls_databricks_course')]",
+				"[concat(variables('factoryId'), '/linkedServices/ls_databricks_course_ws')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ls_databricks_course')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "ls_formula1dl_storage",
+					"type": "LinkedServiceReference"
+				},
+				"parameters": {
+					"p_window_end_date": {
+						"type": "string"
+					}
+				},
+				"annotations": [],
+				"type": "Json",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobFSLocation",
+						"fileName": {
+							"value": "@formatDateTime(dataset().p_window_end_date, 'yyyy-MM')",
+							"type": "Expression"
+						},
+						"folderPath": "raw",
+						"fileSystem": "formula1incremental"
+					}
+				},
+				"schema": {
+					"type": "object",
+					"properties": {
+						"constructorId": {
+							"type": "string"
+						},
+						"name": {
+							"type": "string"
+						},
+						"nationality": {
+							"type": "string"
+						},
+						"url": {
+							"type": "string"
+						}
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/ls_formula1dl_storage')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/pl_transform')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "Get Folder Details",
+						"type": "GetMetadata",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"dataset": {
+								"referenceName": "ls_databricks_course",
+								"type": "DatasetReference",
+								"parameters": {
+									"p_window_end_date": {
+										"value": "@pipeline().parameters.p_window_end_date",
+										"type": "Expression"
+									}
+								}
+							},
+							"fieldList": [
+								"exists"
+							],
+							"storeSettings": {
+								"type": "AzureBlobFSReadSettings",
+								"enablePartitionDiscovery": false
+							},
+							"formatSettings": {
+								"type": "JsonReadSettings"
+							}
+						}
+					},
+					{
+						"name": "If Condition1",
+						"type": "IfCondition",
+						"dependsOn": [
+							{
+								"activity": "Get Folder Details",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@activity('Get Folder Details').output.exists",
+								"type": "Expression"
+							},
+							"ifTrueActivities": [
+								{
+									"name": "transform_race_results",
+									"type": "DatabricksNotebook",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"notebookPath": "/Users/ben.thomas@maticapartners.com/azure-databricks-spark/formula1-project/02-ingestion/5.ingest_results_file",
+										"baseParameters": {
+											"p_file_date": {
+												"value": "@formatDateTime(pipeline().parameters.p_window_end_date, 'yyyy-MM')",
+												"type": "Expression"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_databricks_course_ws",
+										"type": "LinkedServiceReference"
+									}
+								},
+								{
+									"name": "transform_drivers",
+									"type": "DatabricksNotebook",
+									"dependsOn": [
+										{
+											"activity": "transform_race_results",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"notebookPath": "/Users/ben.thomas@maticapartners.com/azure-databricks-spark/formula1-project/03-transformation/2.driver_standings",
+										"baseParameters": {
+											"p_file_date": {
+												"value": "@formatDateTime(pipeline().parameters.p_window_end_date, 'yyyy-MM')",
+												"type": "Expression"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_databricks_course_ws",
+										"type": "LinkedServiceReference"
+									}
+								},
+								{
+									"name": "transform_constructors",
+									"type": "DatabricksNotebook",
+									"dependsOn": [
+										{
+											"activity": "transform_race_results",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"notebookPath": "/Users/ben.thomas@maticapartners.com/azure-databricks-spark/formula1-project/03-transformation/3.constructor_standings",
+										"baseParameters": {
+											"p_file_date": {
+												"value": "@formatDateTime(pipeline().parameters.p_window_end_date, 'yyyy-MM')",
+												"type": "Expression"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_databricks_course_ws",
+										"type": "LinkedServiceReference"
+									}
+								}
+							]
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"p_window_end_date": {
+						"type": "string"
+					}
+				},
+				"variables": {
+					"v_data_source": {
+						"type": "String"
+					}
+				},
+				"annotations": []
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/ls_databricks_course')]",
+				"[concat(variables('factoryId'), '/linkedServices/ls_databricks_course_ws')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/pl_process')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "Execute Ingestion",
+						"type": "ExecutePipeline",
+						"dependsOn": [],
+						"policy": {
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"pipeline": {
+								"referenceName": "pl_ingest",
+								"type": "PipelineReference"
+							},
+							"waitOnCompletion": true,
+							"parameters": {
+								"p_window_end_date": {
+									"value": "@pipeline().parameters.p_window_end_date",
+									"type": "Expression"
+								}
+							}
+						}
+					},
+					{
+						"name": "Execute Ingestion_copy1",
+						"type": "ExecutePipeline",
+						"dependsOn": [
+							{
+								"activity": "Execute Ingestion",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"pipeline": {
+								"referenceName": "pl_transform",
+								"type": "PipelineReference"
+							},
+							"waitOnCompletion": true,
+							"parameters": {
+								"p_window_end_date": {
+									"value": "@pipeline().parameters.p_window_end_date",
+									"type": "Expression"
+								}
+							}
+						}
+					}
+				],
+				"concurrency": 1,
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"p_window_end_date": {
+						"type": "string"
+					}
+				},
+				"annotations": []
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/pipelines/pl_ingest')]",
+				"[concat(variables('factoryId'), '/pipelines/pl_transform')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/tr_process_f1_data')]",
+			"type": "Microsoft.DataFactory/factories/triggers",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"runtimeState": "Stopped",
+				"pipelines": [
+					{
+						"pipelineReference": {
+							"referenceName": "pl_process",
+							"type": "PipelineReference"
+						},
+						"parameters": {
+							"p_window_end_date": "[parameters('tr_process_f1_data_properties_pl_process_parameters_p_window_end_date')]"
+						}
+					}
+				],
+				"type": "ScheduleTrigger",
+				"typeProperties": {
+					"recurrence": {
+						"frequency": "Day",
+						"interval": 7,
+						"startTime": "2026-08-13T09:59:00",
+						"endTime": "2026-08-14T13:00:00",
+						"timeZone": "Romance Standard Time",
+						"schedule": {}
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/pipelines/pl_process')]"
+			]
+		}
+	]
+}
